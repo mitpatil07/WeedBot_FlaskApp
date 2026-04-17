@@ -31,7 +31,8 @@ class MotorController:
 
     def _send_command(self, direction, speed):
         command = f"M:{direction}:{speed}\n"
-        self.arduino.write(command.encode())
+        from utils import safe_write_serial
+        safe_write_serial(command.encode())
 
     def cleanup(self):
         self.stop()

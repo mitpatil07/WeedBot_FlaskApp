@@ -65,7 +65,8 @@ class WeedBotApp:
         speed = data.get('speed')
         
         if self.auto_mode_active:
-            return jsonify({'success': False, 'message': 'Auto mode active'}), 400
+            logger.warning(f"Rejected Manual Move: {command} (Auto mode is active)")
+            return jsonify({'success': False, 'message': 'Manual control disabled while Auto Mode is active'}), 400
             
         logger.info(f"Move Command: {command}, Speed: {speed}")
         

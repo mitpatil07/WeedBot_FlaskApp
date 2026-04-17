@@ -57,13 +57,22 @@ def get_arduino_serial():
         if _arduino_serial is None:
             try:
                 _arduino_serial = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+                import time
                 time.sleep(2) # Wait for Arduino to reset
-                # print(f"Connected to Arduino on {SERIAL_PORT}")
             except Exception as e:
-                # print(f"Error connecting to Arduino: {e}")
-                # For development on Windows without Arduino, you might want to mock this
+                # For development on Windows without Arduino, mock the serial object
                 class MockSerial:
                     def write(self, data): pass
                     def close(self): pass
                 _arduino_serial = MockSerial()
         return _arduino_serial
+
+def safe_write_serial(data):
+    """Thread-safe writing to Arduino serial port"""
+    arduino = get_arduino_serial()
+    with _arduino_lock:
+        try:
+            if hasattr(arduino, 'write'):
+                arduino.write(data)
+        except Exception as e:
+            print(f"Serial write error: {e}")

@@ -12,7 +12,8 @@ class ArmController:
         
         self.current_angle = angle
         command = f"A:{angle}\n"
-        self.arduino.write(command.encode())
+        from utils import safe_write_serial
+        safe_write_serial(command.encode())
 
     def move_left(self, step=10):
         self.set_angle(self.current_angle + step)
