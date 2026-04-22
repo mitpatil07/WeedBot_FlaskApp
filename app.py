@@ -16,16 +16,16 @@ class WeedBotApp:
     def __init__(self):
         self.app = Flask(__name__)
         CORS(self.app, resources={r"/*": {"origins": "*"}})
-        
+
         # Initialize Hardware
         setup_gpio()
         self.motor = MotorController()
         self.arm = ArmController()
         self.camera = Camera()
         self.detector = WeedDetector()
-        
+
         self.auto_mode_active = False
-        self.detection_enabled = True   # ✅ NEW: detection always on by default
+        self.detection_enabled = True
         self._setup_routes()
 
     def _setup_routes(self):
@@ -36,9 +36,11 @@ class WeedBotApp:
         self.app.add_url_rule('/auto', 'auto_toggle', self.toggle_mode, methods=['POST'])
         self.app.add_url_rule('/status', 'get_status', self.get_status, methods=['GET'])
         self.app.add_url_rule('/heartbeat', 'heartbeat', self.heartbeat, methods=['GET'])
-        self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])  # ✅ NEW
+        self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
 
     def generate_frames(self):
+        last_annotated = None  # cache last detected frame between skipped frames
+
         while True:
             try:
                 frame = self.camera.get_frame()
@@ -46,12 +48,17 @@ class WeedBotApp:
                     time.sleep(0.1)
                     continue
 
-                # ✅ FIXED: Always run detection so bounding boxes show
-                # whenever the camera is on — not just in auto mode.
+                weed_x = None
+
                 if self.detection_enabled:
-                    frame, weed_x = self.detector.detect(frame)
-                else:
-                    weed_x = None
+                    # ✅ FIX: Only run heavy ONNX detection every 3rd frame
+                    # Running it every frame was overloading the Pi CPU → crash/restart
+                    if self.camera.should_detect(every_n=3):
+                        frame, weed_x = self.detector.detect(frame)
+                        last_annotated = frame.copy()
+                    elif last_annotated is not None:
+                        # Reuse last annotated frame to keep bounding boxes visible
+                        frame = last_annotated.copy()
 
                 # Arm control only activates in auto mode
                 if self.auto_mode_active:
@@ -78,13 +85,13 @@ class WeedBotApp:
         data = request.json or {}
         command = data.get('command') or data.get('direction')
         speed = data.get('speed')
-        
+
         if self.auto_mode_active:
             logger.warning(f"Rejected Manual Move: {command} (Auto mode is active)")
             return jsonify({'success': False, 'message': 'Manual control disabled while Auto Mode is active'}), 400
-            
+
         logger.info(f"Move Command: {command}, Speed: {speed}")
-        
+
         valid_commands = {
             'forward': self.motor.forward,
             'backward': self.motor.backward,
@@ -94,22 +101,22 @@ class WeedBotApp:
             'rotate_right': self.motor.right,
             'stop': self.motor.stop
         }
-        
+
         if command in valid_commands:
             if command == 'stop':
                 valid_commands[command]()
             else:
                 valid_commands[command](speed)
             return jsonify({'success': True, 'command': command, 'speed': speed})
-        
+
         return jsonify({'success': False, 'message': f'Invalid command: {command}'}), 400
 
     def control_arm(self):
         data = request.json or {}
         direction = data.get('direction')
-        
+
         logger.info(f"Arm Command: {direction}")
-        
+
         if direction == 'left':
             self.arm.move_left()
         elif direction == 'right':
@@ -118,27 +125,26 @@ class WeedBotApp:
             self.arm.reset_position()
         else:
             return jsonify({'success': False, 'message': 'Invalid direction'}), 400
-            
+
         return jsonify({'success': True, 'direction': direction})
 
     def toggle_mode(self):
         data = request.json or {}
-        
+
         if request.path == '/auto' and not data:
             self.auto_mode_active = not self.auto_mode_active
         else:
             mode = data.get('mode', 'auto' if not self.auto_mode_active else 'manual')
             self.auto_mode_active = (mode == 'auto')
-            
+
         if self.auto_mode_active:
             self.motor.stop()
         else:
             self.arm.reset_position()
-            
+
         return jsonify({'success': True, 'mode': 'auto' if self.auto_mode_active else 'manual'})
 
     def toggle_detect(self):
-        """✅ NEW: Toggle weed detection / bounding boxes on or off."""
         data = request.json or {}
         if 'enabled' in data:
             self.detection_enabled = bool(data['enabled'])
@@ -150,7 +156,7 @@ class WeedBotApp:
         return jsonify({
             'online': True,
             'auto_mode': self.auto_mode_active,
-            'detection_enabled': self.detection_enabled,   # ✅ NEW
+            'detection_enabled': self.detection_enabled,
             'timestamp': time.time()
         })
 
