@@ -7,6 +7,7 @@ from weed_detector import WeedDetector
 from utils import setup_gpio, cleanup_gpio, FLASK_PORT, FLASK_HOST
 import time
 import logging
+import threading
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,6 +28,11 @@ class WeedBotApp:
 
         self.auto_mode_active = False
         self.detection_enabled = True
+        
+        # Start background detection thread
+        self.detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
+        self.detection_thread.start()
+        
         self._setup_routes()
 
     def _setup_routes(self):
@@ -39,38 +45,58 @@ class WeedBotApp:
         self.app.add_url_rule('/heartbeat', 'heartbeat', self.heartbeat, methods=['GET'])
         self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
 
-    def generate_frames(self):
-        last_annotated = None  # cache last detected frame between skipped frames
-
+    def _detection_loop(self):
+        """Runs heavy object detection in a background thread to prevent camera lag."""
         while True:
+            if not self.detection_enabled:
+                if self.auto_mode_active:
+                    self.arm.reset_position()
+                time.sleep(0.1)
+                continue
+
+            frame = self.camera.get_frame()
+            if frame is None:
+                time.sleep(0.1)
+                continue
+
+            # Run detection (updates internal state of detector)
             try:
-                frame = self.camera.get_frame()
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-
-                weed_x = None
-
-                if self.detection_enabled:
-                    # ✅ Stability: Run detection every 5th frame for maximum stability
-                    if self.camera.should_detect(every_n=5):
-                        frame, weed_x = self.detector.detect(frame)
-                        last_annotated = frame.copy()
-                    elif last_annotated is not None:
-                        # Reuse last annotated frame to keep bounding boxes visible
-                        frame = last_annotated.copy()
-
-                # Arm control only activates in auto mode
+                # Should detect handles its own frame limiting if needed, or we just run as fast as possible
+                # Because it's in a background thread, we can just run it continuously
+                _, weed_x = self.detector.detect(frame)
+                
+                # Arm control logic based on latest detection
                 if self.auto_mode_active:
                     if weed_x is not None:
                         self.arm.target_weed(weed_x, frame_width=frame.shape[1])
                     else:
                         self.arm.reset_position()
+            except Exception as e:
+                logger.error(f"Detection error: {e}")
+            
+            # Prevent 100% CPU usage if detection is too fast
+            time.sleep(0.01)
+
+    def generate_frames(self):
+        """Streams the latest frame immediately, drawing stale bounding boxes if needed."""
+        while True:
+            try:
+                frame = self.camera.get_frame()
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+
+                if self.detection_enabled:
+                    # Very fast, just draws last known boxes without running ONNX
+                    frame = self.detector.annotate_frame(frame)
 
                 stream_frame = self.camera.get_stream_frame(frame)
                 if stream_frame:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + stream_frame + b'\r\n')
+                
+                # Stream at ~30 FPS for smooth video
+                time.sleep(0.033)
 
             except Exception as e:
                 logger.error(f"Frame generation error: {e}")
