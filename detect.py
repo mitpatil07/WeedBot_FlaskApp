@@ -29,34 +29,40 @@ while True:
     img = preprocess(frame)
 
     outputs = session.run(None, {input_name: img})
+    # YOLOv8 output handling
     detections = outputs[0][0].T
 
     boxes = []
     scores = []
 
     for det in detections:
-
         x, y, w, h, conf = det
 
         if conf > CONF_THRESHOLD:
-
+            # Convert from center-x, center-y, width, height to top-left-x, top-left-y, width, height
             x1 = int((x - w/2) * frame.shape[1] / INPUT_SIZE)
             y1 = int((y - h/2) * frame.shape[0] / INPUT_SIZE)
-            x2 = int((x + w/2) * frame.shape[1] / INPUT_SIZE)
-            y2 = int((y + h/2) * frame.shape[0] / INPUT_SIZE)
+            bw = int(w * frame.shape[1] / INPUT_SIZE)
+            bh = int(h * frame.shape[0] / INPUT_SIZE)
 
-            boxes.append([x1, y1, x2-x1, y2-y1])
+            boxes.append([x1, y1, bw, bh])
             scores.append(float(conf))
 
     indices = cv2.dnn.NMSBoxes(boxes, scores, CONF_THRESHOLD, NMS_THRESHOLD)
 
-    for i in indices:
-        idx = int(i)
-        x, y, w, h = boxes[idx]
+    if len(indices) > 0:
+        for i in indices:
+            if isinstance(i, (list, np.ndarray)):
+                idx = int(i[0])
+            else:
+                idx = int(i)
+                
+            x, y, w, h = boxes[idx]
 
-        cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
-        cv2.putText(frame,"Weed",(x,y-10),
-                    cv2.FONT_HERSHEY_SIMPLEX,0.6,(0,255,0),2)
+            cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+            label = f"Weed {scores[idx]:.2f}"
+            cv2.putText(frame, label, (x, y-10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
     cv2.imshow("Weed Detection", frame)
 

@@ -7,6 +7,7 @@ from weed_detector import WeedDetector
 from utils import setup_gpio, cleanup_gpio, FLASK_PORT, FLASK_HOST, CAMERA_SOURCE
 import time
 import logging
+import threading
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,11 +22,16 @@ class WeedBotApp:
         setup_gpio()
         self.motor = MotorController()
         self.arm = ArmController()
-        self.camera = Camera(src=CAMERA_SOURCE)
+        self.camera = Camera()
         self.detector = WeedDetector()
 
         self.auto_mode_active = False
         self.detection_enabled = True
+        
+        # Start background detection thread
+        self.detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
+        self.detection_thread.start()
+        
         self._setup_routes()
 
     def _setup_routes(self):
@@ -39,19 +45,24 @@ class WeedBotApp:
         self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
 
     def generate_frames(self):
-        last_annotated = None 
+        last_annotated = None  # cache last detected frame between skipped frames
 
         while True:
-            try:
-                frame = self.camera.get_frame()
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
+            if not self.detection_enabled:
+                if self.auto_mode_active:
+                    self.arm.reset_position()
+                time.sleep(0.1)
+                continue
+
+            frame = self.camera.get_frame()
+            if frame is None:
+                time.sleep(0.1)
+                continue
 
                 weed_x = None
 
                 if self.detection_enabled:
-                    # FIX: Only run heavy ONNX detection every 3rd frame
+                    # ✅ FIX: Only run heavy ONNX detection every 3rd frame
                     # Running it every frame was overloading the Pi CPU → crash/restart
                     if self.camera.should_detect(every_n=3):
                         frame, weed_x = self.detector.detect(frame)
@@ -66,11 +77,32 @@ class WeedBotApp:
                         self.arm.target_weed(weed_x, frame_width=frame.shape[1])
                     else:
                         self.arm.reset_position()
+            except Exception as e:
+                logger.error(f"Detection error: {e}")
+            
+            # Prevent 100% CPU usage if detection is too fast
+            time.sleep(0.01)
+
+    def generate_frames(self):
+        """Streams the latest frame immediately, drawing stale bounding boxes if needed."""
+        while True:
+            try:
+                frame = self.camera.get_frame()
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+
+                if self.detection_enabled:
+                    # Very fast, just draws last known boxes without running ONNX
+                    frame = self.detector.annotate_frame(frame)
 
                 stream_frame = self.camera.get_stream_frame(frame)
                 if stream_frame:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + stream_frame + b'\r\n')
+                
+                # Stream at ~30 FPS for smooth video
+                time.sleep(0.033)
 
             except Exception as e:
                 logger.error(f"Frame generation error: {e}")
