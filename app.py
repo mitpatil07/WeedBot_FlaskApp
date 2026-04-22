@@ -51,9 +51,8 @@ class WeedBotApp:
                 weed_x = None
 
                 if self.detection_enabled:
-                    # ✅ FIX: Only run heavy ONNX detection every 3rd frame
-                    # Running it every frame was overloading the Pi CPU → crash/restart
-                    if self.camera.should_detect(every_n=3):
+                    # ✅ Stability: Run detection every 5th frame for maximum stability
+                    if self.camera.should_detect(every_n=5):
                         frame, weed_x = self.detector.detect(frame)
                         last_annotated = frame.copy()
                     elif last_annotated is not None:

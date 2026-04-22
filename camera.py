@@ -37,9 +37,8 @@ class Camera:
             if frame is None:
                 return None
 
-        # ✅ FIX 4: Check imencode return value + lower JPEG quality
-        # Lower quality = less data = less CPU/network load
-        ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        # ✅ FIX 4: Lowered JPEG quality to 50 to save bandwidth/CPU
+        ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
         if not ret:
             return None
         return jpeg.tobytes()
