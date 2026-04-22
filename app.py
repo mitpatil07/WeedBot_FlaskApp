@@ -25,6 +25,7 @@ class WeedBotApp:
         self.detector = WeedDetector()
         
         self.auto_mode_active = False
+        self.detection_enabled = True   # ✅ NEW: detection always on by default
         self._setup_routes()
 
     def _setup_routes(self):
@@ -35,25 +36,39 @@ class WeedBotApp:
         self.app.add_url_rule('/auto', 'auto_toggle', self.toggle_mode, methods=['POST'])
         self.app.add_url_rule('/status', 'get_status', self.get_status, methods=['GET'])
         self.app.add_url_rule('/heartbeat', 'heartbeat', self.heartbeat, methods=['GET'])
+        self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])  # ✅ NEW
 
     def generate_frames(self):
         while True:
-            frame = self.camera.get_frame()
-            if frame is None:
+            try:
+                frame = self.camera.get_frame()
+                if frame is None:
+                    time.sleep(0.1)
+                    continue
+
+                # ✅ FIXED: Always run detection so bounding boxes show
+                # whenever the camera is on — not just in auto mode.
+                if self.detection_enabled:
+                    frame, weed_x = self.detector.detect(frame)
+                else:
+                    weed_x = None
+
+                # Arm control only activates in auto mode
+                if self.auto_mode_active:
+                    if weed_x is not None:
+                        self.arm.target_weed(weed_x, frame_width=frame.shape[1])
+                    else:
+                        self.arm.reset_position()
+
+                stream_frame = self.camera.get_stream_frame(frame)
+                if stream_frame:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + stream_frame + b'\r\n')
+
+            except Exception as e:
+                logger.error(f"Frame generation error: {e}")
                 time.sleep(0.1)
                 continue
-                
-            if self.auto_mode_active:
-                frame, weed_x = self.detector.detect(frame)
-                if weed_x is not None:
-                    self.arm.target_weed(weed_x, frame_width=frame.shape[1])
-                else:
-                    self.arm.reset_position()
-                    
-            stream_frame = self.camera.get_stream_frame(frame)
-            if stream_frame:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + stream_frame + b'\r\n')
 
     def video_feed(self):
         return Response(self.generate_frames(),
@@ -122,10 +137,20 @@ class WeedBotApp:
             
         return jsonify({'success': True, 'mode': 'auto' if self.auto_mode_active else 'manual'})
 
+    def toggle_detect(self):
+        """✅ NEW: Toggle weed detection / bounding boxes on or off."""
+        data = request.json or {}
+        if 'enabled' in data:
+            self.detection_enabled = bool(data['enabled'])
+        else:
+            self.detection_enabled = not self.detection_enabled
+        return jsonify({'success': True, 'detection_enabled': self.detection_enabled})
+
     def get_status(self):
         return jsonify({
             'online': True,
             'auto_mode': self.auto_mode_active,
+            'detection_enabled': self.detection_enabled,   # ✅ NEW
             'timestamp': time.time()
         })
 
