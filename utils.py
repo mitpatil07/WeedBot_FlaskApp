@@ -12,6 +12,11 @@ except (ImportError, RuntimeError):
 FLASK_PORT = 5000
 FLASK_HOST = "0.0.0.0"
 
+# Camera Configuration
+# 0 = Built-in laptop camera
+# 1 = External USB webcam
+CAMERA_SOURCE = 1 
+
 # Arduino Serial Configuration
 # For Linux (Pi): '/dev/ttyACM0' or '/dev/ttyUSB0'
 # For Windows: 'COM3', 'COM4', etc.

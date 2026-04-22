@@ -2,16 +2,20 @@ import cv2
 
 class Camera:
     def __init__(self, src=0):
-        self.video = cv2.VideoCapture(src)
+        # Use DirectShow backend on Windows to prevent hangs with multiple cameras
+        self.video = cv2.VideoCapture(src, cv2.CAP_DSHOW)
+        
+        if not self.video.isOpened():
+            print(f"ERROR: Could not open video source {src} with DSHOW. Trying default...")
+            self.video = cv2.VideoCapture(src)
+            if not self.video.isOpened() and src != 0:
+                print(f"ERROR: Source {src} failed. Falling back to source 0.")
+                self.video = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
-        # ✅ FIX 1: Lowered from 1280x720 → 640x480
-        # 1280x720 was too heavy for Pi and caused power crash/restart
-        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-        # ✅ FIX 2: Limit to 15 FPS — reduces CPU load significantly
-        # Without this the camera ran at max speed and maxed out the CPU
-        self.video.set(cv2.CAP_PROP_FPS, 15)
+        # Lowered from 1280x720 → 640x480 for performance
+        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self.video.set(cv2.CAP_PROP_FPS, 30)
 
         self._frame_count = 0
 

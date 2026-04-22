@@ -4,7 +4,7 @@ from motor import MotorController
 from arm import ArmController
 from camera import Camera
 from weed_detector import WeedDetector
-from utils import setup_gpio, cleanup_gpio, FLASK_PORT, FLASK_HOST
+from utils import setup_gpio, cleanup_gpio, FLASK_PORT, FLASK_HOST, CAMERA_SOURCE
 import time
 import logging
 
@@ -21,7 +21,7 @@ class WeedBotApp:
         setup_gpio()
         self.motor = MotorController()
         self.arm = ArmController()
-        self.camera = Camera()
+        self.camera = Camera(src=CAMERA_SOURCE)
         self.detector = WeedDetector()
 
         self.auto_mode_active = False
@@ -39,7 +39,7 @@ class WeedBotApp:
         self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
 
     def generate_frames(self):
-        last_annotated = None  # cache last detected frame between skipped frames
+        last_annotated = None 
 
         while True:
             try:
@@ -51,7 +51,7 @@ class WeedBotApp:
                 weed_x = None
 
                 if self.detection_enabled:
-                    # ✅ FIX: Only run heavy ONNX detection every 3rd frame
+                    # FIX: Only run heavy ONNX detection every 3rd frame
                     # Running it every frame was overloading the Pi CPU → crash/restart
                     if self.camera.should_detect(every_n=3):
                         frame, weed_x = self.detector.detect(frame)
