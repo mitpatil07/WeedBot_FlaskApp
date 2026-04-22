@@ -21,7 +21,8 @@ class WeedBotApp:
         setup_gpio()
         self.motor = MotorController()
         self.arm = ArmController()
-        self.camera = Camera()
+        # ✅ Set to 1 to use external USB Webcam instead of built-in laptop camera
+        self.camera = Camera(src=1)
         self.detector = WeedDetector()
 
         self.auto_mode_active = False
