@@ -41,9 +41,21 @@ void setup() {
 }
 
 void loop() {
+  // Listen for Bluetooth commands
   if (Serial1.available()) {
     char cmd = (char)Serial1.read();
-    Serial.print("CMD: "); Serial.println(cmd); // debug
+    processCommand(cmd);
+  }
+  
+  // Listen for USB Cable commands
+  if (Serial.available()) {
+    char cmd = (char)Serial.read();
+    processCommand(cmd);
+  }
+}
+
+void processCommand(char cmd) {
+    Serial.print("CMD USB/BT: "); Serial.println(cmd);
 
     switch (cmd) {
       case 'F': moveForward();  break;
@@ -53,7 +65,6 @@ void loop() {
       case 'S': stopMotors();   break;
       default:  break; // ignore unknown commands
     }
-  }
 }
 
 // =============================================

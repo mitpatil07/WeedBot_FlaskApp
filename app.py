@@ -44,20 +44,21 @@ class WeedBotApp:
         self.app.add_url_rule('/heartbeat', 'heartbeat', self.heartbeat, methods=['GET'])
         self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
 
-    def generate_frames(self):
+    def _detection_loop(self):
         last_annotated = None  # cache last detected frame between skipped frames
 
         while True:
-            if not self.detection_enabled:
-                if self.auto_mode_active:
-                    self.arm.reset_position()
-                time.sleep(0.1)
-                continue
+            try:
+                if not self.detection_enabled:
+                    if self.auto_mode_active:
+                        self.arm.reset_position()
+                    time.sleep(0.1)
+                    continue
 
-            frame = self.camera.get_frame()
-            if frame is None:
-                time.sleep(0.1)
-                continue
+                frame = self.camera.get_frame()
+                if frame is None:
+                    time.sleep(0.1)
+                    continue
 
                 weed_x = None
 
