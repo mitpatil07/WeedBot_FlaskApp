@@ -1,91 +1,91 @@
+// =============================================
+//   4WD Rover - BTS7960 + HC-05 Bluetooth
+//   Arduino Mega
+// =============================================
 
-#include <Servo.h>
+// --- Left Motor Driver (BTS7960 #1) ---
+#define L_RPWM  2     // Forward PWM
+#define L_LPWM  3     // Backward PWM
+#define L_R_EN  22    // Right Enable
+#define L_L_EN  23    // Left Enable
 
-// L298N Motor Driver Pins
-const int MOTOR_IN1 = 2;
-const int MOTOR_IN2 = 3;
-const int MOTOR_IN3 = 4;
-const int MOTOR_IN4 = 5;
-const int MOTOR_ENA = 6;
-const int MOTOR_ENB = 7;
+// --- Right Motor Driver (BTS7960 #2) ---
+#define R_RPWM  4     // Forward PWM
+#define R_LPWM  5     // Backward PWM
+#define R_R_EN  24    // Right Enable
+#define R_L_EN  25    // Left Enable
 
-// Servo Pin
-const int SERVO_PIN = 9;
-Servo roboticArm;
+// --- Speed (0–255) ---
+int driveSpeed  = 50;   // Straight driving speed
+int turnSpeed   = 100;   // Turning speed
 
 void setup() {
-  Serial.begin(115200);
-  
-  // Setup Motor Pins
-  pinMode(MOTOR_IN1, OUTPUT);
-  pinMode(MOTOR_IN2, OUTPUT);
-  pinMode(MOTOR_IN3, OUTPUT);
-  pinMode(MOTOR_IN4, OUTPUT);
-  pinMode(MOTOR_ENA, OUTPUT);
-  pinMode(MOTOR_ENB, OUTPUT);
-  
-  // Setup Servo
-  roboticArm.attach(SERVO_PIN);
-  roboticArm.write(90); // Center position
-  
-  Serial.println("WeedBot Arduino Ready");
+  // Enable pins
+  pinMode(L_R_EN, OUTPUT); pinMode(L_L_EN, OUTPUT);
+  pinMode(R_R_EN, OUTPUT); pinMode(R_L_EN, OUTPUT);
+
+  // PWM pins
+  pinMode(L_RPWM, OUTPUT); pinMode(L_LPWM, OUTPUT);
+  pinMode(R_RPWM, OUTPUT); pinMode(R_LPWM, OUTPUT);
+
+  // Activate both drivers
+  digitalWrite(L_R_EN, HIGH); digitalWrite(L_L_EN, HIGH);
+  digitalWrite(R_R_EN, HIGH); digitalWrite(R_L_EN, HIGH);
+
+  // Start stopped
+  stopMotors();
+
+  // HC-05 on Serial1 (pins 18/19)
+  Serial1.begin(9600);
+  Serial.begin(9600); // Optional: USB debug monitor
 }
 
 void loop() {
-  if (Serial.available() > 0) {
-    String command = Serial.readStringUntil('\n');
-    parseCommand(command);
-  }
-}
+  if (Serial1.available()) {
+    char cmd = (char)Serial1.read();
+    Serial.print("CMD: "); Serial.println(cmd); // debug
 
-void parseCommand(String cmd) {
-  cmd.trim();
-  if (cmd.length() == 0) return;
-
-  char type = cmd.charAt(0);
-  
-  if (type == 'M') {
-    // Format M:DIR:SPD
-    int firstColon = cmd.indexOf(':');
-    int secondColon = cmd.indexOf(':', firstColon + 1);
-    
-    if (firstColon != -1 && secondColon != -1) {
-      String dir = cmd.substring(firstColon + 1, secondColon);
-      int speed = cmd.substring(secondColon + 1).toInt();
-      controlMotors(dir, speed);
-    }
-  } 
-  else if (type == 'A') {
-    // Format A:ANGLE
-    int colon = cmd.indexOf(':');
-    if (colon != -1) {
-      int angle = cmd.substring(colon + 1).toInt();
-      roboticArm.write(angle);
+    switch (cmd) {
+      case 'F': moveForward();  break;
+      case 'B': moveBackward(); break;
+      case 'L': turnLeft();     break;
+      case 'R': turnRight();    break;
+      case 'S': stopMotors();   break;
+      default:  break; // ignore unknown commands
     }
   }
 }
 
-void controlMotors(String dir, int speed) {
-  int pwm = map(speed, 0, 100, 0, 255);
-  
-  if (dir == "FWD") {
-    digitalWrite(MOTOR_IN1, HIGH); digitalWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, HIGH); digitalWrite(MOTOR_IN4, LOW);
-  } else if (dir == "BWD") {
-    digitalWrite(MOTOR_IN1, LOW);  digitalWrite(MOTOR_IN2, HIGH);
-    digitalWrite(MOTOR_IN3, LOW);  digitalWrite(MOTOR_IN4, HIGH);
-  } else if (dir == "LFT") {
-    digitalWrite(MOTOR_IN1, LOW);  digitalWrite(MOTOR_IN2, HIGH);
-    digitalWrite(MOTOR_IN3, HIGH); digitalWrite(MOTOR_IN4, LOW);
-  } else if (dir == "RGT") {
-    digitalWrite(MOTOR_IN1, HIGH); digitalWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, LOW);  digitalWrite(MOTOR_IN4, HIGH);
-  } else { // STP or any other
-    digitalWrite(MOTOR_IN1, LOW); digitalWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, LOW); digitalWrite(MOTOR_IN4, LOW);
-    pwm = 0;
-  }
-  
-  analogWrite(MOTOR_ENA, pwm);
-  analogWrite(MOTOR_ENB, pwm);
+// =============================================
+//   Motor Control Functions
+// =============================================
+
+// Both sides forward
+void moveForward() {
+  analogWrite(L_RPWM, driveSpeed); analogWrite(L_LPWM, 0);
+  analogWrite(R_RPWM, driveSpeed); analogWrite(R_LPWM, 0);
+}
+
+// Both sides backward
+void moveBackward() {
+  analogWrite(L_RPWM, 0); analogWrite(L_LPWM, driveSpeed);
+  analogWrite(R_RPWM, 0); analogWrite(R_LPWM, driveSpeed);
+}
+
+// Left side backward, right side forward -> pivot left
+void turnLeft() {
+  analogWrite(L_RPWM, 0);         analogWrite(L_LPWM, turnSpeed);
+  analogWrite(R_RPWM, turnSpeed); analogWrite(R_LPWM, 0);
+}
+
+// Left side forward, right side backward -> pivot right
+void turnRight() {
+  analogWrite(L_RPWM, turnSpeed); analogWrite(L_LPWM, 0);
+  analogWrite(R_RPWM, 0);         analogWrite(R_LPWM, turnSpeed);
+}
+
+// All stop
+void stopMotors() {
+  analogWrite(L_RPWM, 0); analogWrite(L_LPWM, 0);
+  analogWrite(R_RPWM, 0); analogWrite(R_LPWM, 0);
 }

@@ -20,8 +20,8 @@ CAMERA_SOURCE = 1
 # Arduino Serial Configuration
 # For Linux (Pi): '/dev/ttyACM0' or '/dev/ttyUSB0'
 # For Windows: 'COM3', 'COM4', etc.
-SERIAL_PORT = '/dev/ttyACM0' 
-BAUD_RATE = 115200 # Higher baud rate for responsive controls
+# Note: The port is now auto-detected in get_arduino_serial().
+BAUD_RATE = 9600 # Matches the Arduino HC-05 initialization
 
 # Motor GPIO Pins (L298N)
 MOTOR_IN1 = 17
@@ -56,15 +56,39 @@ import threading
 _arduino_lock = threading.Lock()
 _arduino_serial = None
 
+def find_arduino_port():
+    import platform
+    import serial.tools.list_ports
+    try:
+        ports = list(serial.tools.list_ports.comports())
+        for p in ports:
+            desc = p.description.lower()
+            name = p.name.lower()
+            if 'arduino' in desc or 'ch340' in desc or 'usb' in desc or 'acm' in name:
+                print(f"✅ Auto-detected Arduino on: {p.device}")
+                return p.device
+    except Exception as e:
+        print(f"Error enumerating serial ports: {e}")
+        
+    if platform.system() == 'Windows':
+        print("⚠️ Arduino not detected automatically. Defaulting to COM3")
+        return 'COM3'
+    print("⚠️ Arduino not detected automatically. Defaulting to /dev/ttyACM0")
+    return '/dev/ttyACM0'
+
 def get_arduino_serial():
     global _arduino_serial
     with _arduino_lock:
         if _arduino_serial is None:
+            port_to_use = find_arduino_port()
             try:
-                _arduino_serial = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+                _arduino_serial = serial.Serial(port_to_use, BAUD_RATE, timeout=1)
+                print(f"🚀 SUCCESS: Connected to Arduino on {port_to_use}")
                 import time
                 time.sleep(2) # Wait for Arduino to reset
             except Exception as e:
+                print(f"❌ ERROR: Failed to connect to Arduino on {port_to_use}: {e}")
+                print("🛑 WARNING: Falling back to MockSerial. Motors WILL NOT move.")
                 # For development on Windows without Arduino, mock the serial object
                 class MockSerial:
                     def write(self, data): pass
