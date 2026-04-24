@@ -8,19 +8,19 @@ class MotorController:
 
     def forward(self, speed=None):
         if speed is not None: self.current_speed = speed
-        self._send_command('F')
+        self._send_command('B')  # Flipped from F
 
     def backward(self, speed=None):
         if speed is not None: self.current_speed = speed
-        self._send_command('B')
+        self._send_command('F')  # Flipped from B
 
     def left(self, speed=None):
         if speed is not None: self.current_speed = speed
-        self._send_command('L')
+        self._send_command('R')  # Flipped from L
 
     def right(self, speed=None):
         if speed is not None: self.current_speed = speed
-        self._send_command('R')
+        self._send_command('L')  # Flipped from R
 
     def stop(self):
         self._send_command('S')
@@ -31,7 +31,7 @@ class MotorController:
 
     def _send_command(self, cmd_char):
         from utils import safe_write_serial
-        safe_write_serial(cmd_char.encode())
+        safe_write_serial((cmd_char + '\n').encode())
 
     def cleanup(self):
         self.stop()

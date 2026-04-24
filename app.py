@@ -36,13 +36,13 @@ class WeedBotApp:
 
     def _setup_routes(self):
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
-        self.app.add_url_rule('/move', 'move', self.move, methods=['POST'])
-        self.app.add_url_rule('/arm', 'control_arm', self.control_arm, methods=['POST'])
-        self.app.add_url_rule('/mode', 'toggle_mode', self.toggle_mode, methods=['POST'])
-        self.app.add_url_rule('/auto', 'auto_toggle', self.toggle_mode, methods=['POST'])
+        self.app.add_url_rule('/move', 'move', self.move, methods=['POST', 'OPTIONS'])
+        self.app.add_url_rule('/servo', 'control_servo', self.control_servo, methods=['POST', 'OPTIONS'])
+        self.app.add_url_rule('/mode', 'toggle_mode', self.toggle_mode, methods=['POST', 'OPTIONS'])
+        self.app.add_url_rule('/auto', 'auto_toggle', self.toggle_mode, methods=['POST', 'OPTIONS'])
         self.app.add_url_rule('/status', 'get_status', self.get_status, methods=['GET'])
         self.app.add_url_rule('/heartbeat', 'heartbeat', self.heartbeat, methods=['GET'])
-        self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST'])
+        self.app.add_url_rule('/toggle_detect', 'toggle_detect', self.toggle_detect, methods=['POST', 'OPTIONS'])
 
     def _detection_loop(self):
         last_annotated = None  # cache last detected frame between skipped frames
@@ -144,22 +144,16 @@ class WeedBotApp:
 
         return jsonify({'success': False, 'message': f'Invalid command: {command}'}), 400
 
-    def control_arm(self):
+    def control_servo(self):
         data = request.json or {}
-        direction = data.get('direction')
+        servo_id = data.get('servo_id')
+        angle = data.get('angle')
 
-        logger.info(f"Arm Command: {direction}")
-
-        if direction == 'left':
-            self.arm.move_left()
-        elif direction == 'right':
-            self.arm.move_right()
-        elif direction == 'center':
-            self.arm.reset_position()
-        else:
-            return jsonify({'success': False, 'message': 'Invalid direction'}), 400
-
-        return jsonify({'success': True, 'direction': direction})
+        if servo_id is not None and angle is not None:
+            self.arm.set_servo(int(servo_id), int(angle))
+            return jsonify({'success': True, 'servo_id': servo_id, 'angle': angle})
+            
+        return jsonify({'success': False, 'message': 'Missing servo_id or angle'}), 400
 
     def toggle_mode(self):
         data = request.json or {}

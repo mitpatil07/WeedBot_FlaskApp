@@ -102,6 +102,9 @@ def safe_write_serial(data):
     with _arduino_lock:
         try:
             if hasattr(arduino, 'write'):
+                print(f"[SERIAL TX] Sending: {data}")
                 arduino.write(data)
+                if hasattr(arduino, 'flush'):
+                    arduino.flush()
         except Exception as e:
             print(f"Serial write error: {e}")
